@@ -1,0 +1,11 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/dailySnapshots/{snapshotId} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      // Automated collector writes through a trusted server endpoint.
+      allow write: if false;
+    }
+  }
+}
