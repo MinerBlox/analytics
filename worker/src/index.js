@@ -3,6 +3,7 @@ import puppeteer from "@cloudflare/puppeteer";
 const HIPO_URL = "https://hipobuy.com/user/com-share";
 const REPS_URL = "https://repscentral.net/admin/";
 const REPORT_TIME_ZONE = "Europe/London";
+const COLLECTOR_UID = "yBGdOLXo8AZMfb5c3JsLYTQeYgt1";
 
 export default {
   async scheduled(_controller, env) {
@@ -281,7 +282,7 @@ async function writeSnapshot(env, snapshot) {
   );
   if (!authResponse.ok) throw new Error("Firebase collector sign-in failed.");
   const authData = await authResponse.json();
-  if (!authData.idToken) throw new Error("Firebase did not return a collector token.");
+  if (!authData.idToken || authData.localId !== COLLECTOR_UID) throw new Error("Firebase collector account does not match the configured UID.");
 
   const projectId = "repscentral-analytics";
   const documentPath = [
