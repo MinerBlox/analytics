@@ -51,7 +51,7 @@ function setMessage(element, message, visible) {
 }
 
 function formatNumber(value) {
-  return Number.isFinite(Number(value)) ? integer.format(Number(value)) : "—";
+  return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)) ? integer.format(Number(value)) : "—";
 }
 
 function formatDate(value) {
@@ -67,7 +67,7 @@ function formatCapturedAt(value) {
 }
 
 function deltaText(current, previous, previousDate, currentDate) {
-  if (!Number.isFinite(Number(current)) || !Number.isFinite(Number(previous))) return "—";
+  if (current === null || current === undefined || previous === null || previous === undefined || !Number.isFinite(Number(current)) || !Number.isFinite(Number(previous))) return "—";
   const delta = Number(current) - Number(previous);
   const days = Math.round((Date.parse(currentDate + "T12:00:00Z") - Date.parse(previousDate + "T12:00:00Z")) / 86400000);
   const period = days === 1 ? "since yesterday" : "since " + formatDate(previousDate);
