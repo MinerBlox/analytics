@@ -2,9 +2,14 @@
 
 This Worker runs daily at 01:15 UTC, opens the signed-in Hipobuy and RepsCentral pages in Cloudflare Browser Run, and writes a date-keyed snapshot to Firestore. It refuses to write if it cannot parse all three metrics.
 
-## Required Worker secrets
+## Worker settings
 
-Set these in Cloudflare Worker Settings → Variables and Secrets:
+In Cloudflare Worker Settings → Variables and Secrets, add these as plain-text variables:
+
+- `FIREBASE_API_KEY` (the Firebase web API key; it identifies the project and is not a password)
+- `FIREBASE_OWNER_UID` (your dashboard account UID; not a password)
+
+Add these as Secrets:
 
 - `HIPO_USERNAME`
 - `HIPO_PASSWORD`
@@ -12,9 +17,7 @@ Set these in Cloudflare Worker Settings → Variables and Secrets:
 - `REPSCENTRAL_PASSWORD`
 - `FIREBASE_COLLECTOR_EMAIL`
 - `FIREBASE_COLLECTOR_PASSWORD`
-- `FIREBASE_API_KEY` (the web API key from the Firebase app; this is an identifier, not a password)
-- `FIREBASE_OWNER_UID` (your dashboard account UID; not a password)
-- `MANUAL_RUN_TOKEN` (random value used to protect the one-off run endpoint)
+- `MANUAL_RUN_TOKEN` (a random value protecting the one-off run endpoint)
 
 Do not add secret values to this repository or send them in chat.
 
