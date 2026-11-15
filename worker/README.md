@@ -20,8 +20,9 @@ Plaintext variables:
 - `FIREBASE_COLLECTOR_PASSWORD` — dedicated Firebase collector Auth password
 - `MANUAL_RUN_TOKEN` — long random secret protecting the manual trigger
 - `REPSCENTRAL_USERNAME`, `REPSCENTRAL_PASSWORD` — optional, for daily RepsCentral browser extraction
+- `HIPO_USERNAME`, `HIPO_PASSWORD` — optional, only to retain the existing daily Active Members counter via browser scraping
 
-Never publish tokens, cookies, or passwords in this GitHub repository or frontend. You no longer need `HIPO_USERNAME` / `HIPO_PASSWORD` for HipoBuy.
+Never publish tokens, cookies, or passwords in this GitHub repository or frontend. HipoBuy ordering-user counts do not require `HIPO_USERNAME` / `HIPO_PASSWORD`. The old Active Members card still requires those credentials plus Browser Rendering if you want it to keep updating.
 
 ## Run and verify
 1. Deploy Worker. Visit `https://YOUR-WORKER.workers.dev/health`; it should respond with `ok: true`.
