@@ -1,13 +1,13 @@
 import puppeteer from "@cloudflare/puppeteer";
 
-const HIPO_URL = "https://hipobuy.com/user/com-share";
+const HIPO_URL = "https://hipobuy.com/clientapi/newPromoteAlliance/getPromoteStatInfo";
 const REPS_URL = "https://repscentral.net/admin/";
 const REPORT_TIME_ZONE = "Europe/London";
 const COLLECTOR_UID = "yBGdOLXo8AZMfb5c3JsLYTQeYgt1";
 
 export default {
-  async scheduled(_controller, env) {
-    await collectAndSave(env);
+  async scheduled(controller, env) {
+    await collectAndSave(env, new Date(controller.scheduledTime).getUTCHours() === 1);
   },
 
   async fetch(request, env) {
@@ -23,7 +23,7 @@ export default {
       }
 
       try {
-        const result = await collectAndSave(env);
+        const result = await collectAndSave(env, url.searchParams.get("includeReps") === "true");
         return Response.json({ ok: true, metricDate: result.metricDate });
       } catch (_error) {
         return Response.json({ ok: false, error: "Collection failed; check Worker Logs." }, { status: 500 });
@@ -34,39 +34,76 @@ export default {
   }
 };
 
-async function collectAndSave(env) {
+async function collectAndSave(env, includeReps = false) {
   requireEnv(env, [
-    "HIPO_USERNAME", "HIPO_PASSWORD",
-    "REPSCENTRAL_USERNAME", "REPSCENTRAL_PASSWORD",
-    "FIREBASE_COLLECTOR_EMAIL", "FIREBASE_COLLECTOR_PASSWORD",
-    "FIREBASE_API_KEY", "FIREBASE_OWNER_UID", "BROWSER"
+    "HIPO_ACCESS_TOKEN", "FIREBASE_COLLECTOR_EMAIL", "FIREBASE_COLLECTOR_PASSWORD",
+    "FIREBASE_API_KEY", "FIREBASE_OWNER_UID"
   ]);
-
-  const metricDate = previousDateInZone(new Date(), REPORT_TIME_ZONE);
-  const browser = await puppeteer.launch(env.BROWSER);
-  try {
-    const hipoPage = await browser.newPage();
-    const hipo = await readHipobuy(hipoPage, env);
-    await hipoPage.close();
-
-    const repsPage = await browser.newPage();
-    const repscentralDailyPageViews = await readRepscentral(repsPage, env, metricDate);
-    await repsPage.close();
-
-    const capturedAt = new Date().toISOString();
-    await writeSnapshot(env, {
-      metricDate,
-      capturedAt,
-      invitesTotal: hipo.invitesTotal,
-      activeTotal: hipo.activeTotal,
-      repscentralDailyPageViews
-    });
-
-    console.log("Snapshot saved", metricDate);
-    return { metricDate };
-  } finally {
-    await browser.close();
+  const now = new Date();
+  const metricDate = dateInZone(now, REPORT_TIME_ZONE);
+  const capturedAt = now.toISOString();
+  const hipo = await readHipobuy(env);
+  const idToken = await firebaseSignIn(env);
+  const auditId = capturedAt.replace(/[:.]/g, "-");
+  // The audit history preserves each API-reported count and timestamp.
+  await writeDocument(env, idToken, "orderAuditSnapshots", auditId,
+    { metricDate, capturedAt, ...hipo, source: "hipobuy-affiliate-api" });
+  // Field masks preserve previously written RepsCentral data.
+  await writeDocument(env, idToken, "dailySnapshots", metricDate,
+    { metricDate, capturedAt, ...hipo });
+  let repscentral = "skipped";
+  if (includeReps) {
+    if (env.BROWSER && env.REPSCENTRAL_USERNAME && env.REPSCENTRAL_PASSWORD) {
+      let browser;
+      try {
+        browser = await puppeteer.launch(env.BROWSER);
+        const page = await browser.newPage();
+        const yesterday = previousDateInZone(now, REPORT_TIME_ZONE);
+        const dailyViews = await readRepscentral(page, env, yesterday);
+        await writeDocument(env, idToken, "dailySnapshots", metricDate,
+          { repscentralDailyPageViews: dailyViews, repscentralMetricDate: yesterday });
+        repscentral = "saved";
+      } catch (error) {
+        repscentral = "failed";
+        console.error("RepsCentral failed:", error.message);
+      } finally {
+        if (browser) await browser.close();
+      }
+    } else repscentral = "not configured";
   }
+  // Retain the existing Active Members metric using the affiliate page, if configured.
+  if (includeReps && env.BROWSER && env.HIPO_USERNAME && env.HIPO_PASSWORD) {
+    let activeBrowser;
+    try {
+      activeBrowser = await puppeteer.launch(env.BROWSER);
+      const page = await activeBrowser.newPage();
+      await page.goto("https://hipobuy.com/user/com-share", {
+        waitUntil: "domcontentloaded", timeout: 60000
+      });
+      await page.waitForTimeout(2500);
+      await signInIfNeeded(page, "https://hipobuy.com/user/com-share",
+        env.HIPO_USERNAME, env.HIPO_PASSWORD);
+      const pageText = await page.evaluate(() => document.body.innerText || "");
+      const active = parseHipobuyPair(pageText, "Active This Month");
+      if (!active) throw new Error("Active members counter not found");
+      await writeDocument(env, idToken, "dailySnapshots", metricDate,
+        { activeTotal: active.total, activeMonth: active.monthValue });
+    } catch (error) {
+      console.error("Optional HipoBuy active-members scrape failed:", error.message);
+    } finally {
+      if (activeBrowser) await activeBrowser.close();
+    }
+  }
+  console.log("Saved HipoBuy snapshot", auditId, "RepsCentral:", repscentral);
+  return { metricDate, auditId, repscentral };
+}
+
+function dateInZone(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone, day: "2-digit", month: "2-digit", year: "numeric"
+  }).formatToParts(date);
+  const part = name => parts.find(p => p.type === name).value;
+  return [part("year"), part("month"), part("day")].join("-");
 }
 
 function requireEnv(env, keys) {
@@ -75,19 +112,34 @@ function requireEnv(env, keys) {
   }
 }
 
-async function readHipobuy(page, env) {
-  await page.goto(HIPO_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
-  await page.waitForTimeout(2500);
-  await signInIfNeeded(page, HIPO_URL, env.HIPO_USERNAME, env.HIPO_PASSWORD);
-
-  const bodyText = await page.evaluate(() => document.body.innerText || "");
-  const invited = parseHipobuyPair(bodyText, "Invited This Month");
-  const active = parseHipobuyPair(bodyText, "Active This Month");
-  if (!invited || !active) {
-    throw new Error("Hipobuy affiliate counters were not found in the signed-in page.");
+async function readHipobuy(env) {
+  const response = await fetch(HIPO_URL, {
+    headers: { "X-Access-Token": env.HIPO_ACCESS_TOKEN, Accept: "application/json" },
+    redirect: "error",
+    cache: "no-store"
+  });
+  if (!response.ok) throw new Error("HipoBuy HTTP " + response.status);
+  const payload = await response.json();
+  if (payload.success !== true || payload.code !== 200 || !payload.result)
+    throw new Error("HipoBuy API did not return success");
+  const fields = {
+    invitesTotal: "totalInvitedUsers",
+    invitesMonth: "mouthInvitedUsers",
+    orderUsersTotal: "totalOrderUsers",
+    orderUsersMonth: "mouthOrderUsers",
+    signUsersTotal: "totalSignUsers",
+    signUsersMonth: "mouthSignUsers"
+  };
+  const stats = {};
+  for (const [key, original] of Object.entries(fields)) {
+    const value = payload.result[original];
+    if (!Number.isSafeInteger(value) || value < 0)
+      throw new Error("Invalid HipoBuy metric " + original);
+    stats[key] = value;
   }
-
-  return { invitesTotal: invited.total, activeTotal: active.total };
+  if (!Number.isFinite(payload.timestamp)) throw new Error("Invalid provider timestamp");
+  stats.providerTimestamp = new Date(payload.timestamp).toISOString();
+  return stats;
 }
 
 function parseHipobuyPair(text, label) {
@@ -99,8 +151,8 @@ function parseHipobuyPair(text, label) {
   if (!match) return null;
   const monthValue = Number(match[1]);
   const total = Number(match[2]);
-  if (!Number.isSafeInteger(monthValue) || !Number.isSafeInteger(total)) return null;
-  return { monthValue, total };
+  return Number.isSafeInteger(monthValue) && Number.isSafeInteger(total)
+    ? { monthValue, total } : null;
 }
 
 async function readRepscentral(page, env, metricDate) {
@@ -261,16 +313,16 @@ function toDateKey(value) {
 }
 
 function previousDateInZone(now, timeZone) {
-  const today = now.toLocaleDateString("en-CA", { timeZone });
+  const today = dateInZone(now, timeZone);
   const noonUtc = new Date(`${today}T12:00:00.000Z`);
   noonUtc.setUTCDate(noonUtc.getUTCDate() - 1);
   return noonUtc.toISOString().slice(0, 10);
 }
 
-async function writeSnapshot(env, snapshot) {
-  const authResponse = await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(env.FIREBASE_API_KEY)}`,
-    {
+async function firebaseSignIn(env) {
+  const response = await fetch(
+    "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" +
+      encodeURIComponent(env.FIREBASE_API_KEY), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -278,34 +330,36 @@ async function writeSnapshot(env, snapshot) {
         password: env.FIREBASE_COLLECTOR_PASSWORD,
         returnSecureToken: true
       })
-    }
-  );
-  if (!authResponse.ok) throw new Error("Firebase collector sign-in failed.");
-  const authData = await authResponse.json();
-  if (!authData.idToken || authData.localId !== COLLECTOR_UID) throw new Error("Firebase collector account does not match the configured UID.");
+    });
+  if (!response.ok) throw new Error("Firebase collector sign-in failed");
+  const data = await response.json();
+  if (!data.idToken || data.localId !== COLLECTOR_UID)
+    throw new Error("Firebase collector UID mismatch");
+  return data.idToken;
+}
 
-  const projectId = "repscentral-analytics";
-  const documentPath = [
-    "users", env.FIREBASE_OWNER_UID,
-    "dailySnapshots", snapshot.metricDate
-  ].map(encodeURIComponent).join("/");
-  const fields = {
-    metricDate: { stringValue: snapshot.metricDate },
-    capturedAt: { timestampValue: snapshot.capturedAt },
-    invitesTotal: { integerValue: String(snapshot.invitesTotal) },
-    activeTotal: { integerValue: String(snapshot.activeTotal) },
-    repscentralDailyPageViews: { integerValue: String(snapshot.repscentralDailyPageViews) }
-  };
-  const writeResponse = await fetch(
-    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${documentPath}`,
-    {
-      method: "PATCH",
-      headers: {
-        authorization: `Bearer ${authData.idToken}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({ fields })
-    }
-  );
-  if (!writeResponse.ok) throw new Error("Firestore rejected the daily snapshot.");
+async function writeDocument(env, token, collectionName, documentId, data) {
+  const path = ["users", env.FIREBASE_OWNER_UID, collectionName, documentId]
+    .map(encodeURIComponent).join("/");
+  const mask = new URLSearchParams();
+  const fields = {};
+  for (const [key, value] of Object.entries(data)) {
+    mask.append("updateMask.fieldPaths", key);
+    fields[key] = Number.isSafeInteger(value)
+      ? { integerValue: String(value) }
+      : key === "capturedAt" || key === "providerTimestamp"
+      ? { timestampValue: value }
+      : { stringValue: String(value) };
+  }
+  const url = "https://firestore.googleapis.com/v1/projects/repscentral-analytics/" +
+    "databases/(default)/documents/" + path + "?" + mask.toString();
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: { authorization: "Bearer " + token, "content-type": "application/json" },
+    body: JSON.stringify({ fields })
+  });
+  if (!response.ok) {
+    console.error("Firestore returned", response.status);
+    throw new Error("Firestore write failed");
+  }
 }

@@ -8,6 +8,6 @@
     "binding": "BROWSER"
   },
   "triggers": {
-    "crons": ["15 1 * * *"]
+    "crons": ["15 * * * *"]
   }
 }
