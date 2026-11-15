@@ -40,7 +40,7 @@ Never publish tokens, cookies, or passwords in this GitHub repository or fronten
 
 ## How it runs
 - `15 * * * *`: HipoBuy only, hourly at minute 15 UTC.
-- `15 1 * * *`: HipoBuy + previous-day RepsCentral, daily at 01:15 UTC.
+- At the 01:15 UTC hourly run, the Worker also attempts yesterday’s RepsCentral page views and optional HipoBuy active members.
 - `users/{OWNER_UID}/dailySnapshots/{YYYY-MM-DD}`: latest HipoBuy counters and previously fetched RepsCentral daily views (partial updates preserve fields).
 - `users/{OWNER_UID}/orderAuditSnapshots/{UTC timestamp}`: timestamped HipoBuy counter history, never the JWT.
 
