@@ -27,6 +27,10 @@ const activeDelta = document.querySelector("#activeDelta");
 const viewsValue = document.querySelector("#viewsValue");
 const viewsDelta = document.querySelector("#viewsDelta");
 const errorBanner = document.querySelector("#dataError");
+const ordersMonthValue = document.querySelector("#ordersMonthValue");
+const ordersTotalValue = document.querySelector("#ordersTotalValue");
+const ordersDelta = document.querySelector("#ordersDelta");
+const commissionValue = document.querySelector("#commissionValue");
 
 const integer = new Intl.NumberFormat("en-GB");
 const dateFormatter = new Intl.DateTimeFormat("en-GB", {
@@ -88,6 +92,10 @@ function showNoData() {
   invitesValue.textContent = "—";
   activeValue.textContent = "—";
   viewsValue.textContent = "—";
+  ordersMonthValue.textContent = "—";
+  ordersTotalValue.textContent = "—";
+  ordersDelta.textContent = "Waiting for first successful sync";
+  commissionValue.textContent = "—";
   invitesDelta.textContent = "Waiting for first successful sync";
   activeDelta.textContent = "Waiting for first successful sync";
   viewsDelta.textContent = "Waiting for first successful sync";
@@ -118,6 +126,15 @@ function renderSnapshots(records) {
   invitesValue.textContent = formatNumber(latestInvites);
   activeValue.textContent = formatNumber(latestActive);
   viewsValue.textContent = formatNumber(latestViews);
+  const monthOrders = snapshotValue(latest, "orderUsersMonth", "hipobuy", "orderUsersMonth");
+  const totalOrders = snapshotValue(latest, "orderUsersTotal", "hipobuy", "orderUsersTotal");
+  ordersMonthValue.textContent = formatNumber(monthOrders);
+  ordersTotalValue.textContent = formatNumber(totalOrders);
+  commissionValue.textContent = monthOrders == null ? "—" :
+    "$" + integer.format(Number(monthOrders) * (Number(monthOrders) >= 100 ? 60 : 50));
+  ordersDelta.textContent = previous
+    ? deltaText(totalOrders, snapshotValue(previous, "orderUsersTotal", "hipobuy", "orderUsersTotal"), previousDate, latestDate)
+    : "First recorded snapshot";
 
   invitesDelta.textContent = previous
     ? deltaText(latestInvites, snapshotValue(previous, "invitesTotal", "hipobuy", "invitesTotal"), previousDate, latestDate)
@@ -146,6 +163,10 @@ function renderSnapshots(records) {
     appendCell(row, formatNumber(active), "numeric");
     appendCell(row, earlier ? deltaText(active, snapshotValue(earlier, "activeTotal", "hipobuy", "activeTotal"), earlierDate, date) : "—", "numeric");
     appendCell(row, formatNumber(views), "numeric");
+    const ordering = snapshotValue(snapshot, "orderUsersTotal", "hipobuy", "orderUsersTotal");
+    appendCell(row, formatNumber(ordering), "numeric");
+    appendCell(row, earlier ? deltaText(ordering, snapshotValue(earlier, "orderUsersTotal", "hipobuy", "orderUsersTotal"), earlierDate, date) : "—", "numeric");
+    appendCell(row, formatNumber(snapshotValue(snapshot, "orderUsersMonth", "hipobuy", "orderUsersMonth")), "numeric");
     tbody.appendChild(row);
   });
 

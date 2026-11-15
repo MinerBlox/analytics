@@ -52,17 +52,22 @@
         <article class="card metric"><div class="metric-label"><span>Active members</span><span class="metric-icon">◉</span></div><div class="metric-value" id="activeValue">—</div><div class="metric-note" id="activeDelta">—</div></article>
         <article class="card metric"><div class="metric-label"><span>Daily page views</span><span class="metric-icon">⌁</span></div><div class="metric-value" id="viewsValue">—</div><div class="metric-note" id="viewsDelta">—</div></article>
       </div>
+      <div class="metrics">
+        <article class="card metric"><div class="metric-label"><span>Ordering users this month</span><span class="metric-icon">▣</span></div><div class="metric-value" id="ordersMonthValue">—</div><div class="metric-note">HipoBuy API count</div></article>
+        <article class="card metric"><div class="metric-label"><span>Total ordering users</span><span class="metric-icon">✓</span></div><div class="metric-value" id="ordersTotalValue">—</div><div class="metric-note" id="ordersDelta">—</div></article>
+        <article class="card metric"><div class="metric-label"><span>Estimated monthly commission</span><span class="metric-icon">$</span></div><div class="metric-value" id="commissionValue">—</div><div class="metric-note">Assumes $50/user, $60 for all at 100+</div></article>
+      </div>
       <article class="card table-card">
         <div class="section-head"><div><h2>Daily activity</h2><p id="updatedLabel">Loading snapshots…</p></div></div>
         <div class="table-wrap">
           <table id="snapshotTable" hidden>
-            <thead><tr><th>Date</th><th class="numeric">Invites</th><th class="numeric">Change</th><th class="numeric">Active</th><th class="numeric">Change</th><th class="numeric">Page views</th></tr></thead>
+            <thead><tr><th>Date</th><th class="numeric">Invites</th><th class="numeric">Change</th><th class="numeric">Active</th><th class="numeric">Change</th><th class="numeric">Page views</th><th class="numeric">Ordering users total</th><th class="numeric">Change</th><th class="numeric">Ordering users month</th></tr></thead>
             <tbody id="snapshotRows"></tbody>
           </table>
           <div class="empty" id="emptyState"><strong>Your activity will appear here</strong>Once the scheduled data collection is connected, daily totals and changes will show here.</div>
         </div>
       </article>
-      <p class="info">Daily views are recorded page views. Changes compare with the previous available snapshot.</p>
+      <p class="info">RepsCentral page views refer to the previous completed day. HipoBuy ordering-user counts are not independently verified payable conversions. Commission rates are estimates; verify whether the $60 tier applies retroactively.</p>
       <div class="footer"><span>Analytics</span><span>Private workspace</span></div>
     </section>
   </main>
