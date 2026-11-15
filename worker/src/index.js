@@ -71,6 +71,29 @@ async function collectAndSave(env, includeReps = false) {
       }
     } else repscentral = "not configured";
   }
+  // Retain the existing Active Members metric using the affiliate page, if configured.
+  if (includeReps && env.BROWSER && env.HIPO_USERNAME && env.HIPO_PASSWORD) {
+    let activeBrowser;
+    try {
+      activeBrowser = await puppeteer.launch(env.BROWSER);
+      const page = await activeBrowser.newPage();
+      await page.goto("https://hipobuy.com/user/com-share", {
+        waitUntil: "domcontentloaded", timeout: 60000
+      });
+      await page.waitForTimeout(2500);
+      await signInIfNeeded(page, "https://hipobuy.com/user/com-share",
+        env.HIPO_USERNAME, env.HIPO_PASSWORD);
+      const pageText = await page.evaluate(() => document.body.innerText || "");
+      const active = parseHipobuyPair(pageText, "Active This Month");
+      if (!active) throw new Error("Active members counter not found");
+      await writeDocument(env, idToken, "dailySnapshots", metricDate,
+        { activeTotal: active.total, activeMonth: active.monthValue });
+    } catch (error) {
+      console.error("Optional HipoBuy active-members scrape failed:", error.message);
+    } finally {
+      if (activeBrowser) await activeBrowser.close();
+    }
+  }
   console.log("Saved HipoBuy snapshot", auditId, "RepsCentral:", repscentral);
   return { metricDate, auditId, repscentral };
 }
@@ -117,6 +140,19 @@ async function readHipobuy(env) {
   if (!Number.isFinite(payload.timestamp)) throw new Error("Invalid provider timestamp");
   stats.providerTimestamp = new Date(payload.timestamp).toISOString();
   return stats;
+}
+
+function parseHipobuyPair(text, label) {
+  const normalized = text.replace(/\u00a0/g, " ").replace(/,/g, "");
+  const start = normalized.toLowerCase().indexOf(label.toLowerCase());
+  if (start < 0) return null;
+  const section = normalized.slice(start, start + 180);
+  const match = section.match(/([0-9]+)\s*Total\s*([0-9]+)/i);
+  if (!match) return null;
+  const monthValue = Number(match[1]);
+  const total = Number(match[2]);
+  return Number.isSafeInteger(monthValue) && Number.isSafeInteger(total)
+    ? { monthValue, total } : null;
 }
 
 async function readRepscentral(page, env, metricDate) {
