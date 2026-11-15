@@ -7,7 +7,7 @@ const COLLECTOR_UID = "yBGdOLXo8AZMfb5c3JsLYTQeYgt1";
 
 export default {
   async scheduled(controller, env) {
-    await collectAndSave(env, controller.cron === "15 1 * * *");
+    await collectAndSave(env, new Date(controller.scheduledTime).getUTCHours() === 1);
   },
 
   async fetch(request, env) {
